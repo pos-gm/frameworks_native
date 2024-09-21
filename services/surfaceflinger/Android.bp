@@ -31,6 +31,7 @@ cc_defaults {
         "-Wextra",
         "-Wformat",
         "-Wthread-safety",
+        "-Wthread-safety-analysis",
         "-Wunused",
         "-Wunreachable-code",
         "-Wconversion",
@@ -47,7 +48,6 @@ cc_defaults {
         "libtimestats_deps",
         "libsurfaceflinger_common_deps",
         "surfaceflinger_defaults",
-        "surfaceflinger_qcom_ext_defaults",
     ],
     cflags: [
         "-DLOG_TAG=\"SurfaceFlinger\"",
@@ -267,7 +267,10 @@ filegroup {
 
 cc_binary {
     name: "surfaceflinger",
-    defaults: ["libsurfaceflinger_binary"],
+    defaults: [
+        "libsurfaceflinger_binary",
+        "libqtisurfaceflingerextension_defaults",
+    ],
     init_rc: ["surfaceflinger.rc"],
     srcs: [
         ":surfaceflinger_binary_sources",
@@ -277,6 +280,11 @@ cc_binary {
     ],
     shared_libs: [
         "libSurfaceFlingerProp",
+    ],
+    static_libs: [
+        "libqticompositionengineextension",
+        "libqtisurfaceflingerextension",
+
     ],
 
     logtags: ["EventLog/EventLogTags.logtags"],

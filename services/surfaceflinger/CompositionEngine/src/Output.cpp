@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include <SurfaceFlingerProperties.sysprop.h>
 #include <android-base/stringprintf.h>
 #include <common/FlagManager.h>
@@ -23,7 +29,6 @@
 #include <compositionengine/LayerFE.h>
 #include <compositionengine/LayerFECompositionState.h>
 #include <compositionengine/RenderSurface.h>
-#include <compositionengine/UdfpsExtension.h>
 #include <compositionengine/impl/HwcAsyncWorker.h>
 #include <compositionengine/impl/Output.h>
 #include <compositionengine/impl/OutputCompositionState.h>
@@ -47,7 +52,6 @@
 
 #include <renderengine/DisplaySettings.h>
 #include <renderengine/RenderEngine.h>
-
 // TODO(b/129481165): remove the #pragma below and fix conversion issues
 #pragma clang diagnostic pop // ignored "-Wconversion"
 
@@ -57,6 +61,11 @@
 #include <utils/Trace.h>
 
 #include "TracedOrdinal.h"
+
+// QTI_BEGIN
+#include "../QtiExtension/QtiOutputExtension.h"
+using android::compositionengineextension::QtiOutputExtension;
+// QTI_END
 
 using aidl::android::hardware::graphics::composer3::Composition;
 
@@ -104,6 +113,9 @@ ScaleVector getScale(const Rect& from, const Rect& to) {
 std::shared_ptr<Output> createOutput(
         const compositionengine::CompositionEngine& compositionEngine) {
     return createOutputTemplated<Output>(compositionEngine);
+}
+
+Output::Output() {
 }
 
 Output::~Output() = default;
@@ -907,16 +919,21 @@ void Output::writeCompositionState(const compositionengine::CompositionRefreshAr
                     z, includeGeometry, overrideZ, isPeekingThrough,
                     layer->requiresClientComposition());
         }
+
+        // QTI_BEGIN
+        QtiOutputExtension::qtiWriteLayerFlagToHWC(layer->getHwcLayer(), this);
+        // QTI_END
     }
     editState().outputLayerHash = outputLayerHash;
+
+    // QTI_BEGIN
+    QtiOutputExtension::qtiGetVisibleLayerInfo(this);
+    // QTI_END
 }
 
 compositionengine::OutputLayer* Output::findLayerRequestingBackgroundComposition() const {
     compositionengine::OutputLayer* layerRequestingBgComposition = nullptr;
-    for (size_t i = 0; i < getOutputLayerCount(); i++) {
-        compositionengine::OutputLayer* layer = getOutputLayerOrderedByZByIndex(i);
-        compositionengine::OutputLayer* nextLayer = getOutputLayerOrderedByZByIndex(i + 1);
-
+    for (auto* layer : getOutputLayersOrderedByZ()) {
         const auto* compState = layer->getLayerFE().getCompositionState();
 
         // If any layer has a sideband stream, we will disable blurs. In that case, we don't
@@ -935,16 +952,6 @@ compositionengine::OutputLayer* Output::findLayerRequestingBackgroundComposition
         }
         if (compState->backgroundBlurRadius > 0 || compState->blurRegions.size() > 0) {
             layerRequestingBgComposition = layer;
-        }
-
-        // If the next layer is the Udfps touched layer, enable client composition for it
-        // because that somehow leads to the Udfps touched layer getting device composition
-        // consistently.
-        if ((nextLayer != nullptr && layerRequestingBgComposition == nullptr) &&
-            (strncmp(nextLayer->getLayerFE().getDebugName(), UDFPS_TOUCHED_LAYER_NAME,
-                     strlen(UDFPS_TOUCHED_LAYER_NAME)) == 0)) {
-            layerRequestingBgComposition = layer;
-            break;
         }
     }
     return layerRequestingBgComposition;
@@ -1035,11 +1042,18 @@ compositionengine::Output::ColorProfile Output::pickColorProfile(
     }
 
     // respect hdrDataSpace only when there is no legacy HDR support
-    const bool isHdr = hdrDataSpace != ui::Dataspace::UNKNOWN &&
+    bool isHdr = hdrDataSpace != ui::Dataspace::UNKNOWN &&
             !mDisplayColorProfile->hasLegacyHdrSupport(hdrDataSpace) && !isHdrClientComposition;
     if (isHdr) {
         bestDataSpace = hdrDataSpace;
     }
+
+    /* QTI_BEGIN */
+    if (QtiOutputExtension::qtiHasSecureDisplay(this)) {
+        bestDataSpace = ui::Dataspace::V0_SRGB;
+        isHdr = false;
+    }
+    /* QTI_END */
 
     ui::RenderIntent intent;
     switch (refreshArgs.outputColorSetting) {
@@ -1242,7 +1256,8 @@ void Output::finishFrame(GpuCompositionResult&& result) {
 void Output::updateProtectedContentState() {
     const auto& outputState = getState();
     auto& renderEngine = getCompositionEngine().getRenderEngine();
-    const bool supportsProtectedContent = renderEngine.supportsProtectedContent();
+
+    bool supportsProtectedContent = renderEngine.supportsProtectedContent();
 
     bool isProtected;
     if (FlagManager::getInstance().display_protected()) {
@@ -1262,6 +1277,10 @@ void Output::updateProtectedContentState() {
                     (!FlagManager::getInstance().protected_if_client() ||
                      layer->requiresClientComposition());
         });
+
+        /* QTI_BEGIN */
+        needsProtected = needsProtected && QtiOutputExtension::qtiIsProtectedContent(this);
+        /* QTI_END */
         if (needsProtected != mRenderSurface->isProtected()) {
             mRenderSurface->setProtected(needsProtected);
         }
@@ -1316,7 +1335,10 @@ std::optional<base::unique_fd> Output::composeSurfaces(
 
     // Generate the client composition requests for the layers on this output.
     auto& renderEngine = getCompositionEngine().getRenderEngine();
-    const bool supportsProtectedContent = renderEngine.supportsProtectedContent();
+    const bool supportsProtectedContent = renderEngine.supportsProtectedContent()
+            /* QTI_BEGIN */
+            && mRenderSurface->isProtected(); /* QTI_END */
+
     std::vector<LayerFE*> clientCompositionLayersFE;
     std::vector<LayerFE::LayerSettings> clientCompositionLayers =
             generateClientCompositionRequests(supportsProtectedContent,
@@ -1327,7 +1349,10 @@ std::optional<base::unique_fd> Output::composeSurfaces(
     OutputCompositionState& outputCompositionState = editState();
     // Check if the client composition requests were rendered into the provided graphic buffer. If
     // so, we can reuse the buffer and avoid client composition.
-    if (mClientCompositionRequestCache) {
+    if (mClientCompositionRequestCache
+        /* QTI_BEGIN */
+        && (!QtiOutputExtension::qtiUseSpecFence() || mLayerRequestingBackgroundBlur != nullptr)
+        /* QTI_END */) {
         if (mClientCompositionRequestCache->exists(tex->getBuffer()->getId(),
                                                    clientCompositionDisplay,
                                                    clientCompositionLayers)) {

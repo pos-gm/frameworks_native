@@ -13,6 +13,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #pragma once
 
 #include <sys/types.h>
@@ -161,6 +167,14 @@ struct CompositionRefreshArgs;
 namespace renderengine {
 class RenderEngine;
 } // namespace renderengine
+
+/* QTI_BEGIN */
+namespace surfaceflingerextension {
+class QtiSurfaceFlingerExtension;
+class QtiNullExtension;
+class QtiSurfaceFlingerExtensionIntf;
+} // namespace surfaceflingerextension
+/* QTI_END */
 
 enum {
     eTransactionNeeded = 0x01,
@@ -347,6 +361,11 @@ public:
         return sActiveDisplayRotationFlags;
     }
 
+    /* QTI_BEGIN */
+    bool mRequestDisplayModeFlag = false;
+    std::thread::id mFlagThread = std::this_thread::get_id();
+    /* QTI_END */
+
 protected:
     // We're reference counted, never destroy SurfaceFlinger directly
     virtual ~SurfaceFlinger();
@@ -378,6 +397,11 @@ private:
     friend class LayerRenderArea;
     friend class SurfaceComposerAIDL;
     friend class DisplayRenderArea;
+
+    /* QTI_BEGIN */
+    friend class ::android::surfaceflingerextension::QtiSurfaceFlingerExtension;
+    friend class ::android::surfaceflingerextension::QtiNullExtension;
+    /* QTI_END */
 
     // For unit tests
     friend class TestableSurfaceFlinger;
@@ -799,6 +823,8 @@ private:
 
     void initScheduler(const sp<const DisplayDevice>&) REQUIRES(kMainThreadContext, mStateLock);
 
+    void resetPhaseConfiguration(Fps) REQUIRES(mStateLock, kMainThreadContext);
+
     /*
      * Transactions
      */
@@ -933,8 +959,6 @@ private:
             std::optional<OutputCompositionState>& displayState,
             std::vector<std::pair<Layer*, sp<LayerFE>>>& layers,
             std::vector<sp<LayerFE>>& layerFEs);
-
-    bool canAllocateHwcDisplayIdForVDS(uint64_t usage);
 
     // If the uid provided is not UNSET_UID, the traverse will skip any layers that don't have a
     // matching ownerUid
@@ -1092,7 +1116,9 @@ private:
             std::shared_ptr<compositionengine::Display> compositionDisplay,
             const DisplayDeviceState& state,
             const sp<compositionengine::DisplaySurface>& displaySurface,
-            const sp<IGraphicBufferProducer>& producer) REQUIRES(mStateLock);
+            const sp<IGraphicBufferProducer>& producer,
+            surfaceflingerextension::QtiDisplaySurfaceExtensionIntf* mQtiDSExtnIntf = nullptr)
+            REQUIRES(mStateLock);
     void processDisplayChangesLocked() REQUIRES(mStateLock, kMainThreadContext);
     void processDisplayRemoved(const wp<IBinder>& displayToken)
             REQUIRES(mStateLock, kMainThreadContext);
@@ -1140,8 +1166,7 @@ private:
     void enableHalVirtualDisplays(bool);
 
     // Virtual display lifecycle for ID generation and HAL allocation.
-    VirtualDisplayId acquireVirtualDisplay(ui::Size, ui::PixelFormat, bool canAllocateHwcForVDS)
-            REQUIRES(mStateLock);
+    VirtualDisplayId acquireVirtualDisplay(ui::Size, ui::PixelFormat) REQUIRES(mStateLock);
     void releaseVirtualDisplay(VirtualDisplayId);
 
     // Returns a display other than `mActiveDisplayId` that can be activated, if any.
@@ -1501,10 +1526,6 @@ private:
 
     const sp<WindowInfosListenerInvoker> mWindowInfosListenerInvoker;
 
-    bool mAllowHwcForVDS = false;
-    bool mAllowHwcForWFD = false;
-    int mFirstApiLevel = 0;
-
     // returns the framerate of the layer with the given sequence ID
     float getLayerFramerate(nsecs_t now, int32_t id) const {
         return mScheduler->getLayerFramerate(now, id);
@@ -1527,6 +1548,11 @@ private:
     // These classes do not store any client state but help with managing transaction callbacks
     // and stats.
     std::unordered_map<uint32_t, sp<Layer>> mLegacyLayers GUARDED_BY(kMainThreadContext);
+
+    /* QTI_BEGIN */
+    surfaceflingerextension::QtiSurfaceFlingerExtensionIntf* mQtiSFExtnIntf = nullptr;
+    std::mutex mSmomoMutex;
+    /* QTI_END */
 
     TransactionHandler mTransactionHandler GUARDED_BY(kMainThreadContext);
     ui::DisplayMap<ui::LayerStack, frontend::DisplayInfo> mFrontEndDisplayInfos

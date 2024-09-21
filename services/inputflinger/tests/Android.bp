@@ -116,4 +116,7 @@ cc_test {
         unit_test: true,
     },
     test_suites: ["device-tests"],
+    cflags: [
+        "-Wno-error=ambiguous-reversed-operator",
+    ],
 }

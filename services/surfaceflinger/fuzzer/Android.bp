@@ -30,12 +30,15 @@ cc_defaults {
     static_libs: [
         "libc++fs",
         "libsurfaceflinger_common",
+        "libqtisurfaceflingerextension",
+        "libqticompositionengineextension",
     ],
     srcs: [
         ":libsurfaceflinger_sources",
     ],
     defaults: [
         "libsurfaceflinger_defaults",
+        "libqtisurfaceflingerextension_defaults",
     ],
     header_libs: [
         "libsurfaceflinger_headers",

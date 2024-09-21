@@ -70,8 +70,6 @@ PERFETTO_TE_CATEGORIES_DECLARE(FRAMEWORK_CATEGORIES);
 
 PERFETTO_TE_CATEGORIES_DEFINE(FRAMEWORK_CATEGORIES);
 
-std::atomic_bool is_perfetto_registered = false;
-
 struct PerfettoTeCategory* toCategory(uint64_t inCategory) {
   switch (inCategory) {
     case TRACE_CATEGORY_ALWAYS:
@@ -137,11 +135,15 @@ struct PerfettoTeCategory* toCategory(uint64_t inCategory) {
 
 }  // namespace
 
-bool isPerfettoRegistered() {
-  return is_perfetto_registered;
+bool isPerfettoSdkTracingEnabled() {
+  return android::os::perfetto_sdk_tracing();
 }
 
 struct PerfettoTeCategory* toPerfettoCategory(uint64_t category) {
+  if (!isPerfettoSdkTracingEnabled()) {
+    return nullptr;
+  }
+
   struct PerfettoTeCategory* perfettoCategory = toCategory(category);
   if (perfettoCategory == nullptr) {
     return nullptr;
@@ -153,10 +155,9 @@ struct PerfettoTeCategory* toPerfettoCategory(uint64_t category) {
 }
 
 void registerWithPerfetto(bool test) {
-  if (!android::os::perfetto_sdk_tracing()) {
+  if (!isPerfettoSdkTracingEnabled()) {
     return;
   }
-
   static std::once_flag registration;
   std::call_once(registration, [test]() {
     struct PerfettoProducerInitArgs args = PERFETTO_PRODUCER_INIT_ARGS_INIT();
@@ -164,7 +165,6 @@ void registerWithPerfetto(bool test) {
     PerfettoProducerInit(args);
     PerfettoTeInit();
     PERFETTO_TE_REGISTER_CATEGORIES(FRAMEWORK_CATEGORIES);
-    is_perfetto_registered = true;
   });
 }
 

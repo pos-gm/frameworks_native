@@ -782,6 +782,7 @@ TEST_F(LayerHistoryTest, oneLayerExplicitVoteWithCategory) {
 }
 
 TEST_F(LayerHistoryTest, oneLayerExplicitVoteWithCategoryNotVisibleDoesNotVote) {
+    // TODO(b/304338314): uncomment the below line once the bug is fixed
     SET_FLAG_FOR_TEST(flags::misc1, true);
 
     auto layer = createLayer();
@@ -1033,6 +1034,7 @@ TEST_F(LayerHistoryTest, inactiveLayers) {
 }
 
 TEST_F(LayerHistoryTest, invisibleExplicitLayer) {
+    // TODO(b/304338314): uncomment the below line once the bug is fixed
     SET_FLAG_FOR_TEST(flags::misc1, false);
 
     auto explicitVisiblelayer = createLayer();
@@ -1066,6 +1068,7 @@ TEST_F(LayerHistoryTest, invisibleExplicitLayer) {
 }
 
 TEST_F(LayerHistoryTest, invisibleExplicitLayerDoesNotVote) {
+    // TODO(b/304338314): uncomment the below line once the bug is fixed
     SET_FLAG_FOR_TEST(flags::misc1, true);
 
     auto explicitVisiblelayer = createLayer();
@@ -1148,6 +1151,7 @@ TEST_F(LayerHistoryTest, infrequentAnimatingLayer) {
 }
 
 TEST_F(LayerHistoryTest, frontBufferedLayerVotesMax) {
+    // TODO(b/304338314): uncomment the below line once the bug is fixed
     SET_FLAG_FOR_TEST(flags::vrr_config, true);
     auto layer = createLayer();
 

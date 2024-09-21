@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #ifndef ANDROID_GUI_SURFACE_H
 #define ANDROID_GUI_SURFACE_H
 
@@ -33,7 +39,19 @@
 #include <shared_mutex>
 #include <unordered_set>
 
+/* QTI_BEGIN */
+#include "../../QtiExtension/QtiSurfaceExtension.h"
+#include "../../QtiExtension/QtiSurfaceExtensionGPP.h"
+/* QTI_END */
+
 namespace android {
+
+/* QTI_BEGIN */
+namespace libguiextension {
+class QtiSurfaceExtension;
+class QtiSurfaceExtensionGPP;
+};
+/* QTI_END */
 
 namespace gui {
 class ISurfaceComposer;
@@ -453,6 +471,11 @@ protected:
         Region dirtyRegion;
     };
 
+    /* QTI_BEGIN */
+    friend class libguiextension::QtiSurfaceExtension;
+    libguiextension::QtiSurfaceExtension* mQtiSurfaceExtn = nullptr;
+    /* QTI_END */
+
     // mSurfaceTexture is the interface to the surface texture server. All
     // operations on the surface texture client ultimately translate into
     // interactions with the server using this interface.
@@ -649,6 +672,10 @@ protected:
 
     // Buffers that are successfully dequeued/attached and handed to clients
     std::unordered_set<int> mDequeuedSlots;
+
+    /* QTI_BEGIN */
+    std::shared_ptr<libguiextension::QtiSurfaceExtensionGPP> mQtiSurfaceGPPExtn = nullptr;
+    /* QTI_END */
 };
 
 } // namespace android

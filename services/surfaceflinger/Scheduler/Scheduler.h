@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #pragma once
 
 #include <atomic>
@@ -122,6 +128,10 @@ public:
     using Impl::scheduleConfigure;
     using Impl::scheduleFrame;
 
+    /* QTI_BEGIN */
+    using Impl::qtiScheduleFrameImmed;
+    /* QTI_END */
+
     // Schedule an asynchronous or synchronous task on the main thread.
     template <typename F, typename T = std::invoke_result_t<F>>
     [[nodiscard]] std::future<T> schedule(F&& f) {
@@ -193,6 +203,8 @@ public:
     void resetPhaseConfiguration(Fps) REQUIRES(kMainThreadContext);
 
     const VsyncConfiguration& getVsyncConfiguration() const { return *mVsyncConfiguration; }
+
+    VsyncConfiguration* getVsyncConfiguration_ptr() { return mVsyncConfiguration.get(); }
 
     // Sets the render rate for the scheduler to run at.
     void setRenderRate(PhysicalDisplayId, Fps, bool applyImmediately);
@@ -325,6 +337,12 @@ public:
     float getLayerFramerate(nsecs_t now, int32_t id) const {
         return mLayerHistory.getLayerFramerate(now, id);
     }
+
+    /* QTI_BEGIN */
+    void qtiUpdateThermalFps(float fps);
+    void qtiUpdateSmoMoRefreshRateVote(std::map<int, int>& refresh_rate_votes);
+    bool isGameFrameRateOverridePresent();
+    /* QTI_END */
 
     bool updateFrameRateOverrides(GlobalSignals, Fps displayRefreshRate) EXCLUDES(mPolicyLock);
 
@@ -609,6 +627,11 @@ private:
 
     FrameRateOverrideMappings mFrameRateOverrideMappings;
     SmallAreaDetectionAllowMappings mSmallAreaDetectionAllowMappings;
+
+    /* QTI_BEGIN */
+    // Cache thermal Fps, and limit to the given level
+    float mQtiThermalFps = 90.0f;
+    /* QTI_END */
 };
 
 } // namespace scheduler

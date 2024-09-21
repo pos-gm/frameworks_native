@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 // TODO(b/129481165): remove the #pragma below and fix conversion issues
 
 #pragma clang diagnostic push
@@ -74,6 +80,9 @@
 #include "Layer.h"
 #include "LayerProtoHelper.h"
 #include "MutexUtils.h"
+/* QTI_BEGIN */
+#include "QtiExtension/QtiSurfaceFlingerExtensionIntf.h"
+/* QTI_END */
 #include "SurfaceFlinger.h"
 #include "TimeStats/TimeStats.h"
 #include "TransactionCallbackInvoker.h"
@@ -133,6 +142,12 @@ TimeStats::SetFrameRateVote frameRateToSetFrameRateVotePayload(Layer::FrameRate 
 }
 
 } // namespace
+
+/* QTI_BEGIN */
+namespace surfaceflingerextension {
+class QtiSurfaceFlingerExtensionIntf;
+} // namespace surfaceflingerextension
+/* QTI_END */
 
 using namespace ftl::flag_operators;
 
@@ -217,6 +232,10 @@ Layer::Layer(const surfaceflinger::LayerCreationArgs& args)
     mPremultipliedAlpha = !(args.flags & ISurfaceComposerClient::eNonPremultiplied);
     mPotentialCursor = args.flags & ISurfaceComposerClient::eCursorWindow;
     mProtectedByApp = args.flags & ISurfaceComposerClient::eProtectedByApp;
+
+    /* QTI_BEGIN */
+    mQtiLayerClass = mFlinger->mQtiSFExtnIntf->qtiGetLayerClass(mName);
+    /* QTI_END */
 
     mSnapshot->sequence = sequence;
     mSnapshot->name = getDebugName();
@@ -609,6 +628,14 @@ void Layer::prepareGeometryCompositionState() {
     snapshot->geomBufferUsesDisplayInverseTransform = getTransformToDisplayInverse();
     snapshot->geomUsesSourceCrop = usesSourceCrop();
     snapshot->isSecure = isSecure();
+
+    /* QTI_BEGIN */
+    snapshot->qtiIsSecureDisplay = mFlinger->mQtiSFExtnIntf->qtiIsSecureDisplay(
+            static_cast<sp<const GraphicBuffer>>(getBuffer()));
+    snapshot->qtiIsSecureCamera = mFlinger->mQtiSFExtnIntf->qtiIsSecureCamera(
+            static_cast<sp<const GraphicBuffer>>(getBuffer()));
+    snapshot->qtiLayerClass = mQtiLayerClass;
+    /* QTI_END */
 
     snapshot->metadata.clear();
     const auto& supportedMetadata = mFlinger->getHwComposer().getSupportedLayerGenericMetadata();
@@ -1571,6 +1598,9 @@ void Layer::miniDumpHeader(std::string& result) {
     result.append(" Layer name\n");
     result.append("           Z | ");
     result.append(" Window Type | ");
+    /* QTI_BEGIN */
+    result.append(" Layer Class |");
+    /* QTI_END */
     result.append(" Comp Type | ");
     result.append(" Transform | ");
     result.append("  Disp Frame (LTRB) | ");
@@ -1608,6 +1638,9 @@ void Layer::miniDumpLegacy(std::string& result, const DisplayDevice& display) co
         StringAppendF(&result, "  %10d | ", layerState.z);
     }
     StringAppendF(&result, "  %10d | ", mWindowType);
+    /* QTI_BEGIN */
+    StringAppendF(&result, "  %10d | ", mQtiLayerClass);
+    /* QTI_END */
     StringAppendF(&result, "%10s | ", toString(getCompositionType(display)).c_str());
     StringAppendF(&result, "%10s | ", toString(outputLayerState.bufferTransform).c_str());
     const Rect& frame = outputLayerState.displayFrame;
@@ -1642,6 +1675,9 @@ void Layer::miniDump(std::string& result, const frontend::LayerSnapshot& snapsho
     StringAppendF(&result, "  %10zu | ", snapshot.globalZ);
     StringAppendF(&result, "  %10d | ",
                   snapshot.layerMetadata.getInt32(gui::METADATA_WINDOW_TYPE, 0));
+    /* QTI_BEGIN */
+    StringAppendF(&result, "  %10d | ", mQtiLayerClass);
+    /* QTI_END */
     StringAppendF(&result, "%10s | ", toString(getCompositionType(outputLayer)).c_str());
     const auto& outputLayerState = outputLayer->getState();
     StringAppendF(&result, "%10s | ", toString(outputLayerState.bufferTransform).c_str());
@@ -3158,6 +3194,14 @@ bool Layer::setBuffer(std::shared_ptr<renderengine::ExternalTexture>& buffer,
             frameNumberChanged ? bufferData.frameNumber : mDrawingState.frameNumber + 1;
     ATRACE_FORMAT_INSTANT("setBuffer %s - %" PRIu64, getDebugName(), frameNumber);
 
+    /* QTI_BEGIN */
+    if (bufferData.qtiInvalid) {
+        callReleaseBufferCallback(bufferData.releaseBufferListener, buffer->getBuffer(),
+                                  bufferData.frameNumber, bufferData.acquireFence);
+        return false;
+    }
+    /* QTI_END */
+
     if (mDrawingState.buffer) {
         releasePreviousBuffer();
     } else if (buffer) {
@@ -3629,31 +3673,26 @@ void Layer::gatherBufferInfo() {
         {
             ATRACE_NAME("getDataspace");
             err = mapper.getDataspace(mBufferInfo.mBuffer->getBuffer()->handle, &dataspace);
+            /* QTI_BEGIN */
+            if (dataspace == ui::Dataspace::UNKNOWN) {
+              ALOGW("%s: Received unknown dataspace from gralloc", __func__);
+            }
+            /* QTI_END */
         }
-        if (err != OK || dataspace != mBufferInfo.mDataspace) {
+        if ((err != OK || dataspace != mBufferInfo.mDataspace)
+            /* QTI_BEGIN */
+            && dataspace != ui::Dataspace::UNKNOWN) {
+            /* QTI_END */
             {
                 ATRACE_NAME("setDataspace");
                 err = mapper.setDataspace(mBufferInfo.mBuffer->getBuffer()->handle,
                                           static_cast<ui::Dataspace>(mBufferInfo.mDataspace));
             }
-
-            // Some GPU drivers may cache gralloc metadata which means before we composite we need
-            // to upsert RenderEngine's caches. Put in a special workaround to be backwards
-            // compatible with old vendors, with a ticking clock.
-            static const int32_t kVendorVersion =
-                    base::GetIntProperty("ro.board.api_level", __ANDROID_API_FUTURE__);
-            if (const auto format =
-                        static_cast<aidl::android::hardware::graphics::common::PixelFormat>(
-                                mBufferInfo.mBuffer->getPixelFormat());
-                err == OK && kVendorVersion < __ANDROID_API_U__ &&
-                (format ==
-                         aidl::android::hardware::graphics::common::PixelFormat::
-                                 IMPLEMENTATION_DEFINED ||
-                 format == aidl::android::hardware::graphics::common::PixelFormat::YCBCR_420_888 ||
-                 format == aidl::android::hardware::graphics::common::PixelFormat::YV12 ||
-                 format == aidl::android::hardware::graphics::common::PixelFormat::YCBCR_P010)) {
-                mBufferInfo.mBuffer->remapBuffer();
-            }
+            /* QTI_BEGIN */
+            // GPU drivers cache gralloc metadata which means before we composite we need
+            // to upsert RenderEngine's cache.
+            mBufferInfo.mBuffer->remapBuffer();
+            /* QTI_END */
         }
     }
     if (lastDataspace != mBufferInfo.mDataspace) {
@@ -3996,6 +4035,15 @@ sp<LayerFE> Layer::getCompositionEngineLayerFE(
     }
     auto layerFE = mFlinger->getFactory().createLayerFE(mName, this);
     mLayerFEs.emplace_back(path, layerFE);
+
+    /* QTI_BEGIN */
+    if (getBuffer()) {
+        mSnapshot->qtiIsSecureDisplay = mFlinger->mQtiSFExtnIntf->qtiIsSecureDisplay(
+                static_cast<sp<const GraphicBuffer>>(getBuffer()));
+        mSnapshot->qtiIsSecureCamera = mFlinger->mQtiSFExtnIntf->qtiIsSecureCamera(
+                static_cast<sp<const GraphicBuffer>>(getBuffer()));
+    }
+    /* QTI_END */
     return layerFE;
 }
 
@@ -4202,6 +4250,11 @@ bool Layer::latchBufferImpl(bool& recomputeVisibleRegions, nsecs_t latchTime, bo
     if (oldOpacity != isOpaque(mDrawingState)) {
         recomputeVisibleRegions = true;
     }
+
+    /* QTI_BEGIN */
+    mFlinger->mQtiSFExtnIntf->qtiSetPresentTime(qtiGetSmomoLayerStackId(), getSequence(),
+                                                mBufferInfo.mDesiredPresentTime);
+    /* QTI_END */
 
     return true;
 }
@@ -4466,6 +4519,16 @@ void Layer::setIsSmallDirty(const Region& damageRegion,
     mSmallDirty = mFlinger->mScheduler->isSmallDirtyArea(mOwnerAppId,
                                                          bounds.getWidth() * bounds.getHeight());
 }
+
+/* QTI_BEGIN */
+void Layer::qtiSetSmomoLayerStackId(uint32_t id) {
+    qtiSmomoLayerStackId = id;
+}
+
+uint32_t Layer::qtiGetSmomoLayerStackId() {
+    return qtiSmomoLayerStackId;
+}
+/* QTI_END */
 
 void Layer::setIsSmallDirty(frontend::LayerSnapshot* snapshot) {
     setIsSmallDirty(snapshot->surfaceDamage, snapshot->localTransform);

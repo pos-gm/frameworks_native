@@ -534,8 +534,6 @@ struct PointerProperties {
     }
 
     PointerProperties& operator=(const PointerProperties&) = default;
-
-    void copyFrom(const PointerProperties& other);
 };
 
 std::ostream& operator<<(std::ostream& out, const PointerProperties& properties);

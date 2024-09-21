@@ -51,6 +51,7 @@ cc_defaults {
         "libcgrouprc",
         "libjsoncpp",
         "libcgrouprc_format",
+        "libsurfaceflinger_common",
     ],
     header_libs: [
         "android.hardware.graphics.composer@2.1-command-buffer",
@@ -85,7 +86,6 @@ filegroup {
         "src/OutputLayer.cpp",
         "src/OutputLayerCompositionState.cpp",
         "src/RenderSurface.cpp",
-        "src/UdfpsExtension.cpp",
     ],
 }
 
@@ -94,7 +94,10 @@ cc_library {
     defaults: [
         "libcompositionengine_defaults",
         "libsurfaceflinger_common_deps",
-        "surfaceflinger_udfps_lib_defaults",
+        "libqtisurfaceflingerextension_defaults",
+    ],
+    static_libs: [
+        "libqticompositionengineextension",
     ],
     srcs: [
         ":libcompositionengine_sources",
@@ -124,16 +127,12 @@ cc_library {
         "libgtest",
         "libgmock",
         "libcompositionengine",
+        "libqticompositionengineextension",
+    ],
+    shared_libs: [
+        "server_configurable_flags",
     ],
     local_include_dirs: ["include"],
-    export_include_dirs: ["include"],
-}
-
-cc_library_static {
-    name: "surfaceflinger_udfps_lib",
-    srcs: [
-        "src/UdfpsExtension.cpp",
-    ],
     export_include_dirs: ["include"],
 }
 
@@ -149,7 +148,6 @@ cc_test {
         "libsurfaceflinger_common_test_deps",
     ],
     srcs: [
-        ":libcompositionengine_sources",
         "tests/planner/CachedSetTest.cpp",
         "tests/planner/FlattenerTest.cpp",
         "tests/planner/LayerStateTest.cpp",
@@ -168,11 +166,13 @@ cc_test {
         "tests/RenderSurfaceTest.cpp",
     ],
     static_libs: [
+        "libcompositionengine",
         "libcompositionengine_mocks",
         "libgui_mocks",
         "librenderengine_mocks",
         "libgmock",
         "libgtest",
+        "libqticompositionengineextension",
     ],
     shared_libs: [
         // For some reason, libvulkan isn't picked up from librenderengine

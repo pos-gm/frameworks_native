@@ -292,12 +292,16 @@ filegroup {
 
 cc_defaults {
     name: "libgui-defaults",
-    defaults: ["libgui_bufferqueue-defaults"],
+    defaults: [
+        "libgui_bufferqueue-defaults",
+        "libguiextension_defaults",
+    ],
     srcs: [":libgui-sources"],
     static_libs: [
         "libgui_aidl_static",
         "libgui_window_info_static",
         "libguiflags",
+        "libqtiguiextension",
     ],
     shared_libs: [
         "libbinder",
@@ -308,8 +312,10 @@ cc_defaults {
     ],
 }
 
-cc_defaults {
-    name: "libgui_defaults",
+cc_library_shared {
+    name: "libgui",
+    vendor_available: true,
+    double_loadable: true,
 
     defaults: [
         "libgui-defaults",
@@ -504,17 +510,74 @@ cc_library_static {
     ],
 }
 
-cc_library_shared {
-    name: "libgui",
-    double_loadable: true,
-    vendor_available: true,
-    defaults: ["libgui_defaults"]
+// QTI_BEGIN
+soong_config_module_type_import {
+    from: "frameworks/native/services/surfaceflinger/QtiExtension/Android.bp",
+    module_types: [
+        "qtidisplayextension_cc_library_static",
+        "qtidisplayextension_cc_defaults",],
 }
 
-cc_library_shared {
-    name: "libgui_vendor",
-    vendor: true,
-    defaults: ["libgui_defaults"]
+qtidisplayextension_cc_library_static {
+    name: "libqtiguiextension",
+    vendor_available: true,
+    defaults: [
+        "libgui_bufferqueue-defaults",
+        "libguiextension_defaults",
+    ],
+    header_libs: [
+        "libgui_aidl_headers",
+    ],
+    static_libs: [
+        "libgui_window_info_static"
+    ],
+    soong_config_variables: {
+        displayextension: {
+            cflags: [
+                "-DQTI_DISPLAY_EXTENSION",
+            ],
+            srcs: [
+                "QtiExtension/QtiBufferQueueProducerExtension.cpp",
+            ],
+       },
+    },
+    srcs: [
+        "QtiExtension/QtiBLASTBufferQueueExtension.cpp",
+        "QtiExtension/QtiDolphinWrapper.cpp",
+        "QtiExtension/QtiSurfaceExtension.cpp",
+        "QtiExtension/QtiSurfaceExtensionGPP.cpp",
+    ],
+    local_include_dirs: ["QtiExtension"],
+    export_include_dirs: ["QtiExtension"],
 }
+
+qtidisplayextension_cc_defaults {
+    name: "guicommonsys_defaults",
+    soong_config_variables: {
+        displayextension: {
+            cflags: [
+                "-DQTI_DISPLAY_EXTENSION",
+            ],
+        }
+    },
+    header_libs: [
+        "display_intf_headers",
+        "libimapper_stablec",
+    ],
+    shared_libs: [
+        "libvndksupport",
+        "libgralloctypes",
+        "libhidlbase",
+        "android.hardware.graphics.mapper@4.0",
+    ],
+}
+
+cc_defaults {
+    name: "libguiextension_defaults",
+    defaults: [
+        "guicommonsys_defaults",
+    ],
+}
+// QTI_END
 
 subdirs = ["tests"]

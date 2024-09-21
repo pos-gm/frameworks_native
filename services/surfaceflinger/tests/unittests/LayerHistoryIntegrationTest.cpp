@@ -496,6 +496,7 @@ TEST_F(LayerHistoryIntegrationTest, inactiveLayers) {
 }
 
 TEST_F(LayerHistoryIntegrationTest, invisibleExplicitLayerIsActive) {
+    // TODO(b/304338314): uncomment the below line once the bug is fixed
     SET_FLAG_FOR_TEST(flags::misc1, false);
 
     auto explicitVisiblelayer = createLegacyAndFrontedEndLayer(1);
@@ -521,6 +522,7 @@ TEST_F(LayerHistoryIntegrationTest, invisibleExplicitLayerIsActive) {
 }
 
 TEST_F(LayerHistoryIntegrationTest, invisibleExplicitLayerIsNotActive) {
+    // TODO(b/304338314): uncomment the below line once the bug is fixed
     SET_FLAG_FOR_TEST(flags::misc1, true);
 
     auto explicitVisiblelayer = createLegacyAndFrontedEndLayer(1);

@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #undef LOG_TAG
 #define LOG_TAG "BLASTBufferQueue"
 
@@ -211,15 +217,32 @@ BLASTBufferQueue::BLASTBufferQueue(const std::string& name, bool updateDestinati
             this);
 
     BQA_LOGV("BLASTBufferQueue created");
+
+    /* QTI_BEGIN */
+    if (!mQtiBBQExtn) {
+        mQtiBBQExtn = new libguiextension::QtiBLASTBufferQueueExtension(this, name);
+    }
+    /* QTI_END */
 }
 
 BLASTBufferQueue::BLASTBufferQueue(const std::string& name, const sp<SurfaceControl>& surface,
                                    int width, int height, int32_t format)
       : BLASTBufferQueue(name) {
+    /* QTI_BEGIN */
+    if (!mQtiBBQExtn) {
+        mQtiBBQExtn = new libguiextension::QtiBLASTBufferQueueExtension(this, name);
+    }
+    /* QTI_END */
     update(surface, width, height, format);
 }
 
 BLASTBufferQueue::~BLASTBufferQueue() {
+    /* QTI_BEGIN */
+    if (mQtiBBQExtn) {
+      delete mQtiBBQExtn;
+    }
+    /* QTI_END */
+
     TransactionCompletedListener::getInstance()->removeQueueStallListener(this);
     if (mPendingTransactions.empty()) {
         return;
@@ -284,6 +307,12 @@ void BLASTBufferQueue::update(const sp<SurfaceControl>& surface, uint32_t width,
         // All transactions on our apply token are one-way. See comment on mAppliedLastTransaction
         t.setApplyToken(mApplyToken).apply(false, true);
     }
+
+    /* QTI_BEGIN */
+    if (mQtiBBQExtn) {
+        mQtiBBQExtn->qtiSetConsumerUsageBitsForRC(mName, mSurfaceControl);
+    }
+    /* QTI_END */
 }
 
 static std::optional<SurfaceControlStats> findMatchingStat(
@@ -500,6 +529,9 @@ void BLASTBufferQueue::releaseBuffer(const ReleaseCallbackId& callbackId,
         return;
     }
     mNumAcquired--;
+    /* QTI_BEGIN */
+    mQtiNumUndequeued++;
+    /* QTI_END */
     BBQ_TRACE("frame=%" PRIu64, callbackId.framenumber);
     BQA_LOGV("released %s", callbackId.to_string().c_str());
     mBufferItemConsumer->releaseBuffer(it->second, releaseFence);
@@ -675,6 +707,11 @@ status_t BLASTBufferQueue::acquireNextBufferLocked(
         t->setApplyToken(mApplyToken).apply(false, true);
         mAppliedLastTransaction = true;
         mLastAppliedFrameNumber = bufferItem.mFrameNumber;
+        /* QTI_BEGIN */
+        if (mQtiBBQExtn) {
+            mQtiBBQExtn->qtiTrackTransaction(bufferItem.mFrameNumber, bufferItem.mTimestamp);
+        }
+        /* QTI_END */
     } else {
         t->setBufferHasBarrier(mSurfaceControl, mLastAppliedFrameNumber);
         mAppliedLastTransaction = false;
@@ -812,6 +849,9 @@ void BLASTBufferQueue::onFrameReplaced(const BufferItem& item) {
 void BLASTBufferQueue::onFrameDequeued(const uint64_t bufferId) {
     std::lock_guard _lock{mTimestampMutex};
     mDequeueTimestamps[bufferId] = systemTime();
+    /* QTI_BEGIN */
+    mQtiNumUndequeued--;
+    /* QTI_END */
 };
 
 void BLASTBufferQueue::onFrameCancelled(const uint64_t bufferId) {

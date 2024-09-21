@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #pragma once
 
 #include <android-base/thread_annotations.h>
@@ -90,6 +96,14 @@ public:
 
     bool isSmallDirtyArea(uint32_t dirtyArea, float threshold) const;
 
+    /* QTI_BEGIN */
+    void qtiUpdateThermalFps(float fps) { mQtiThermalFps = fps; }
+    void qtiUpdateSmoMoRefreshRateVote(std::map<int, int>& refresh_rate_votes) {
+      refresh_rate_votes_ = refresh_rate_votes;
+    }
+    bool isGameFrameRateOverridePresent();
+    /* QTI_END */
+
     // Updates the frame rate override set by game mode intervention
     void updateGameModeFrameRateOverride(FrameRateOverride frameRateOverride) EXCLUDES(mLock);
 
@@ -152,6 +166,13 @@ private:
 
     // Whether a mode change is in progress or not
     std::atomic<bool> mModeChangePending = false;
+
+    /* QTI_BEGIN */
+    // If Thermal mitigation enabled, limit to thermal Fps
+    float mQtiThermalFps = 0.0f;
+    std::map<int, int> refresh_rate_votes_;
+    bool mQtiGameFrameRateOverridePresent = false;
+    /* QTI_END */
 
     // A list to look up the game frame rate overrides
     // Each entry includes:

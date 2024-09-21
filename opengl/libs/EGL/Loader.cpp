@@ -270,7 +270,7 @@ void* Loader::open(egl_connection_t* cnx) {
         hnd = attempt_to_load_updated_driver(cnx);
 
         // If updated driver apk is set but fail to load, abort here.
-        LOG_ALWAYS_FATAL_IF(android::GraphicsEnv::getInstance().getDriverNamespace(),
+        LOG_ALWAYS_FATAL_IF(android::GraphicsEnv::getInstance().getDriverNamespace() && !hnd,
                             "couldn't find an OpenGL ES implementation from %s",
                             android::GraphicsEnv::getInstance().getDriverPath().c_str());
     }
@@ -702,11 +702,6 @@ void Loader::initialize_api(void* dso, egl_connection_t* cnx, uint32_t mask) {
 
         ALOGE_IF(!getProcAddress,
                 "can't find eglGetProcAddress() in EGL driver library");
-
-#ifdef NV_ANDROID_FRAMEWORK_ENHANCEMENTS
-        // This internally sets a bit in the main Nvidia EGL driver to enable desktop openGL
-        getProcAddress("eglSentinelForNVFrameworks");
-#endif
 
         egl_t* egl = &cnx->egl;
         __eglMustCastToProperFunctionPointerType* curr =

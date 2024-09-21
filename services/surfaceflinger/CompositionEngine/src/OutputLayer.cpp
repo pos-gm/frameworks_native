@@ -13,12 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #include <DisplayHardware/Hal.h>
 #include <android-base/stringprintf.h>
 #include <compositionengine/DisplayColorProfile.h>
 #include <compositionengine/LayerFECompositionState.h>
 #include <compositionengine/Output.h>
-#include <compositionengine/UdfpsExtension.h>
 #include <compositionengine/impl/HwcBufferCache.h>
 #include <compositionengine/impl/OutputCompositionState.h>
 #include <compositionengine/impl/OutputLayer.h>
@@ -33,6 +39,11 @@
 #pragma clang diagnostic ignored "-Wconversion"
 
 #include "DisplayHardware/HWComposer.h"
+
+// QTI_BEGIN
+#include "../QtiExtension/QtiOutputExtension.h"
+using android::compositionengineextension::QtiOutputExtension;
+// QTI_END
 
 // TODO(b/129481165): remove the #pragma below and fix conversion issues
 #pragma clang diagnostic pop // ignored "-Wconversion"
@@ -458,17 +469,7 @@ void OutputLayer::writeOutputDependentGeometryStateToHWC(HWC2::Layer* hwcLayer,
               sourceCrop.bottom, to_string(error).c_str(), static_cast<int32_t>(error));
     }
 
-    uint32_t z_udfps = z;
-    if ((strncmp(getLayerFE().getDebugName(), UDFPS_LAYER_NAME, strlen(UDFPS_LAYER_NAME)) == 0) ||
-        (strncmp(getLayerFE().getDebugName(), UDFPS_BIOMETRIC_PROMPT_LAYER_NAME,
-                 strlen(UDFPS_BIOMETRIC_PROMPT_LAYER_NAME)) == 0)) {
-        z_udfps = getUdfpsZOrder(z, false);
-    } else if (strncmp(getLayerFE().getDebugName(), UDFPS_TOUCHED_LAYER_NAME,
-                       strlen(UDFPS_TOUCHED_LAYER_NAME)) == 0) {
-        z_udfps = getUdfpsZOrder(z, true);
-    }
-
-    if (auto error = hwcLayer->setZOrder(z_udfps); error != hal::Error::NONE) {
+    if (auto error = hwcLayer->setZOrder(z); error != hal::Error::NONE) {
         ALOGE("[%s] Failed to set Z %u: %s (%d)", getLayerFE().getDebugName(), z,
               to_string(error).c_str(), static_cast<int32_t>(error));
     }
@@ -613,6 +614,11 @@ void OutputLayer::writeOutputIndependentPerFrameStateToHWC(
             // Ignored
             break;
     }
+
+    /* QTI_BEGIN */
+    QtiOutputExtension::qtiSetLayerType(hwcLayer, outputIndependentState.qtiLayerClass,
+                              getLayerFE().getDebugName());
+    /* QTI_END */
 }
 
 void OutputLayer::writeSolidColorStateToHWC(HWC2::Layer* hwcLayer,

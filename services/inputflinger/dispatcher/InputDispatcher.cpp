@@ -653,7 +653,7 @@ std::optional<std::string> verifyTargetedInjection(const sp<WindowInfoHandle>& w
         return StringPrintf("No valid window target for injection into uid %s.",
                             uid.toString().c_str());
     }
-    if (entry.injectionState->targetUid != window->getInfo()->ownerUid) {
+    if (entry.injectionState->targetUid.value() != window->getInfo()->ownerUid) {
         return StringPrintf("Injected event targeted at uid %s would be dispatched to window '%s' "
                             "owned by uid %s.",
                             uid.toString().c_str(), window->getName().c_str(),
@@ -1293,7 +1293,6 @@ bool InputDispatcher::shouldPruneInboundQueueLocked(const MotionEntry& motionEnt
         const ui::LogicalDisplayId displayId = motionEntry.displayId;
         const auto [x, y] = resolveTouchedPosition(motionEntry);
         const bool isStylus = isPointerFromStylus(motionEntry, /*pointerIndex=*/0);
-
         sp<WindowInfoHandle> touchedWindowHandle =
                 findTouchedWindowAtLocked(displayId, x, y, isStylus);
         if (touchedWindowHandle != nullptr &&
@@ -2450,7 +2449,6 @@ std::vector<InputTarget> InputDispatcher::findTouchedWindowTargetsLocked(
         const bool isStylus = isPointerFromStylus(entry, pointerIndex);
         sp<WindowInfoHandle> newTouchedWindowHandle =
                 findTouchedWindowAtLocked(displayId, x, y, isStylus);
-
         if (isDown) {
             targets += findOutsideTargetsLocked(displayId, newTouchedWindowHandle, pointer.id);
         }
@@ -2893,7 +2891,6 @@ void InputDispatcher::addDragEventLocked(const MotionEntry& entry) {
     const int32_t maskedAction = entry.action & AMOTION_EVENT_ACTION_MASK;
     const int32_t x = entry.pointerCoords[pointerIndex].getX();
     const int32_t y = entry.pointerCoords[pointerIndex].getY();
-
     switch (maskedAction) {
         case AMOTION_EVENT_ACTION_MOVE: {
             // Handle the special case : stylus button no longer pressed.
@@ -3298,7 +3295,6 @@ void InputDispatcher::pokeUserActivityLocked(const EventEntry& eventEntry) {
         }
     }
 
-    int32_t keyCode = AKEYCODE_UNKNOWN;
     switch (eventEntry.type) {
         case EventEntry::Type::MOTION: {
             const MotionEntry& motionEntry = static_cast<const MotionEntry&>(eventEntry);
@@ -3329,8 +3325,6 @@ void InputDispatcher::pokeUserActivityLocked(const EventEntry& eventEntry) {
                 }
                 return;
             }
-
-            keyCode = keyEntry.keyCode;
             break;
         }
         default: {
@@ -3341,10 +3335,10 @@ void InputDispatcher::pokeUserActivityLocked(const EventEntry& eventEntry) {
     }
 
     mLastUserActivityTimes[eventType] = eventEntry.eventTime;
-    auto command = [this, eventTime = eventEntry.eventTime, eventType, displayId, keyCode]()
+    auto command = [this, eventTime = eventEntry.eventTime, eventType, displayId]()
                            REQUIRES(mLock) {
                                scoped_unlock unlock(mLock);
-                               mPolicy.pokeUserActivity(eventTime, eventType, displayId, keyCode);
+                               mPolicy.pokeUserActivity(eventTime, eventType, displayId);
                            };
     postCommandLocked(std::move(command));
 }

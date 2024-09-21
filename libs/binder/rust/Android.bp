@@ -28,7 +28,7 @@ rust_library {
         "//apex_available:platform",
         "//apex_available:anyapex",
     ],
-    min_sdk_version: "Tiramisu",
+    min_sdk_version: "33",
 }
 
 rust_library {
@@ -91,7 +91,7 @@ rust_library {
         "//apex_available:platform",
         "//apex_available:anyapex",
     ],
-    min_sdk_version: "Tiramisu",
+    min_sdk_version: "33",
     lints: "none",
     clippy_lints: "none",
     visibility: [":__subpackages__"],
@@ -147,7 +147,7 @@ rust_bindgen {
         "//apex_available:platform",
         "//apex_available:anyapex",
     ],
-    min_sdk_version: "Tiramisu",
+    min_sdk_version: "33",
 }
 
 rust_bindgen {

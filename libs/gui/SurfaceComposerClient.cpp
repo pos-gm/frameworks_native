@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 #define LOG_TAG "SurfaceComposerClient"
@@ -59,6 +63,10 @@
 #include <gui/ScreenCaptureResults.h>
 #include <private/gui/ComposerService.h>
 #include <private/gui/ComposerServiceAIDL.h>
+
+/* QTI_BEGIN */
+#include "QtiExtension/QtiDolphinWrapper.h"
+/* QTI_END */
 
 // This server size should always be smaller than the server cache size
 #define BUFFER_CACHE_MAX_SIZE 4096
@@ -1232,13 +1240,29 @@ status_t SurfaceComposerClient::Transaction::apply(bool synchronous, bool oneWay
         flags |= ISurfaceComposer::eEarlyWakeupEnd;
     }
 
+    /* QTI_BEGIN */
+    QtiDolphinWrapper* qtiDolphinWrapper = QtiDolphinWrapper::qtiGetDolphinWrapper();
+    if (qtiDolphinWrapper && qtiDolphinWrapper->qtiDolphinFilterBuffer) {
+        qtiDolphinWrapper->qtiDolphinFilterBuffer(mIsAutoTimestamp, mDesiredPresentTime, flags);
+    }
+    /* QTI_END */
     sp<IBinder> applyToken = mApplyToken ? mApplyToken : getDefaultApplyToken();
 
     sp<ISurfaceComposer> sf(ComposerService::getComposerService());
+    /* QTI_BEGIN */
+    if (qtiDolphinWrapper && qtiDolphinWrapper->qtiDolphinQueueBuffer) {
+        qtiDolphinWrapper->qtiDolphinQueueBuffer(true);
+    }
+    /* QTI_END */
     sf->setTransactionState(mFrameTimelineInfo, composerStates, displayStates, flags, applyToken,
                             mInputWindowCommands, mDesiredPresentTime, mIsAutoTimestamp,
                             mUncacheBuffers, hasListenerCallbacks, listenerCallbacks, mId,
                             mMergedTransactionIds);
+    /* QTI_BEGIN */
+    if (qtiDolphinWrapper && qtiDolphinWrapper->qtiDolphinQueueBuffer) {
+        qtiDolphinWrapper->qtiDolphinQueueBuffer(false);
+    }
+    /* QTI_END */
     mId = generateId();
 
     // Clear the current states and flags

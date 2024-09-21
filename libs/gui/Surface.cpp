@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #define LOG_TAG "Surface"
 #define ATRACE_TAG ATRACE_TAG_GRAPHICS
 //#define LOG_NDEBUG 0
@@ -52,6 +58,10 @@
 #include <private/gui/ComposerServiceAIDL.h>
 
 #include <com_android_graphics_libgui_flags.h>
+
+/* QTI_BEGIN */
+#include <cutils/properties.h>
+/* QTI_END */
 
 namespace android {
 
@@ -128,9 +138,34 @@ Surface::Surface(const sp<IGraphicBufferProducer>& bufferProducer, bool controll
     mSwapIntervalZero = false;
     mMaxBufferCount = NUM_BUFFER_SLOTS;
     mSurfaceControlHandle = surfaceControlHandle;
+
+    /* QTI_BEGIN */
+    char value[PROPERTY_VALUE_MAX];
+    int intValue = 0;
+    property_get("vendor.display.enable_optimal_refresh_rate", value, "0");
+    intValue = atoi(value);
+    bool enableOptimalRefreshRate = (intValue == 1) ? true : false;
+
+    if (!mQtiSurfaceExtn && enableOptimalRefreshRate) {
+        mQtiSurfaceExtn = new libguiextension::QtiSurfaceExtension(this);
+    }
+
+    property_get("vendor.gpp.create_frc_extension", value, "0");
+    intValue = atoi(value);
+    if (!mQtiSurfaceGPPExtn && intValue == 1) {
+        mQtiSurfaceGPPExtn = std::make_shared<libguiextension::QtiSurfaceExtensionGPP>(IGraphicBufferProducer::asBinder(bufferProducer), &mGraphicBufferProducer);
+    }
+    /* QTI_END */
 }
 
 Surface::~Surface() {
+    /* QTI_BEGIN */
+    if (mQtiSurfaceExtn) {
+        delete mQtiSurfaceExtn;
+    }
+    mQtiSurfaceGPPExtn = nullptr;
+    /* QTI_END */
+
     if (mConnectedToCpu) {
         Surface::disconnect(NATIVE_WINDOW_API_CPU);
     }
@@ -154,6 +189,12 @@ sp<IGraphicBufferProducer> Surface::getIGraphicBufferProducer() const {
 
 void Surface::setSidebandStream(const sp<NativeHandle>& stream) {
     mGraphicBufferProducer->setSidebandStream(stream);
+
+    /* QTI_BEGIN */
+    if (mQtiSurfaceGPPExtn) {
+        mQtiSurfaceGPPExtn->setSidebandStream(stream);
+    }
+    /* QTI_END */
 }
 
 void Surface::allocateBuffers() {
@@ -588,6 +629,13 @@ int Surface::dequeueBuffer(android_native_buffer_t** buffer, int* fenceFd) {
     ATRACE_FORMAT("dequeueBuffer - %s", getDebugName());
     ALOGV("Surface::dequeueBuffer");
 
+
+    /* QTI_BEGIN */
+    if (mQtiSurfaceGPPExtn) {
+        mQtiSurfaceGPPExtn->DynamicEnable(&mGraphicBufferProducer);
+    }
+    /* QTI_END */
+
     IGraphicBufferProducer::DequeueBufferInput dqInput;
     {
         Mutex::Autolock lock(mMutex);
@@ -703,6 +751,12 @@ int Surface::dequeueBuffers(std::vector<BatchBuffer>* buffers) {
 
     ATRACE_CALL();
     ALOGV("Surface::dequeueBuffers");
+
+    /* QTI_BEGIN */
+    if (mQtiSurfaceGPPExtn) {
+        mQtiSurfaceGPPExtn->DynamicEnable(&mGraphicBufferProducer);
+    }
+    /* QTI_END */
 
     if (buffers->size() == 0) {
         ALOGE("%s: must dequeue at least 1 buffer!", __FUNCTION__);
@@ -1060,6 +1114,13 @@ void Surface::applyGrallocMetadataLocked(
         android_native_buffer_t* buffer,
         const IGraphicBufferProducer::QueueBufferInput& queueBufferInput) {
     ATRACE_CALL();
+
+    /* QTI_BEGIN */
+    if (mQtiSurfaceExtn) {
+        mQtiSurfaceExtn->qtiSetBufferDequeueDuration(getDebugName(), buffer, mLastDequeueDuration);
+    }
+    /* QTI_END */
+
     auto& mapper = GraphicBufferMapper::get();
     mapper.setDataspace(buffer->handle, static_cast<ui::Dataspace>(queueBufferInput.dataSpace));
     if (mHdrMetadataIsSet & HdrMetadata::SMPTE2086)
@@ -1883,6 +1944,13 @@ int Surface::connect(
     Mutex::Autolock lock(mMutex);
     IGraphicBufferProducer::QueueBufferOutput output;
     mReportRemovedBuffers = reportBufferRemoval;
+
+    /* QTI_BEGIN */
+    if (mQtiSurfaceGPPExtn) {
+        mQtiSurfaceGPPExtn->Connect(api, &mGraphicBufferProducer);
+    }
+    /* QTI_END */
+
     int err = mGraphicBufferProducer->connect(listener, api, mProducerControlledByApp, &output);
     if (err == NO_ERROR) {
         mDefaultWidth = output.width;
@@ -1898,6 +1966,12 @@ int Surface::connect(
         }
 
         mConsumerRunningBehind = (output.numPendingBuffers >= 2);
+
+        /* QTI_BEGIN */
+        if (mQtiSurfaceGPPExtn) {
+            mQtiSurfaceGPPExtn->StoreConnect(api, listener, reportBufferRemoval);
+        }
+        /* QTI_END */
     }
     if (!err && api == NATIVE_WINDOW_API_CPU) {
         mConnectedToCpu = true;
@@ -1939,6 +2013,13 @@ int Surface::disconnect(int api, IGraphicBufferProducer::DisconnectMode mode) {
             mConnectedToCpu = false;
         }
     }
+
+    /* QTI_BEGIN */
+    if (mQtiSurfaceGPPExtn) {
+        mQtiSurfaceGPPExtn->Disconnect(api, &mGraphicBufferProducer);
+    }
+    /* QTI_END */
+
     return err;
 }
 

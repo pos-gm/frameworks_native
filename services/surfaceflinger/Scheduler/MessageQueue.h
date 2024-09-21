@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/* Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -76,6 +82,10 @@ public:
     virtual void scheduleConfigure() = 0;
     virtual void scheduleFrame() = 0;
 
+    /* QTI_BEGIN */
+    virtual void qtiScheduleFrameImmed() = 0;
+    /* QTI_END */
+
     virtual std::optional<scheduler::ScheduleResult> getScheduledFrameResult() const = 0;
 };
 
@@ -99,6 +109,10 @@ protected:
         virtual bool isFramePending() const;
 
         virtual void dispatchFrame(VsyncId, TimePoint expectedVsyncTime);
+
+        /* QTI_BEGIN */
+        virtual void qtiDispatchFrameImmed();
+        /* QTI_END */
     };
 
     friend class Handler;
@@ -150,6 +164,10 @@ public:
 
     void scheduleConfigure() override;
     void scheduleFrame() override;
+
+    /* QTI_BEGIN */
+    void qtiScheduleFrameImmed() override;
+    /* QTI_END */
 
     std::optional<scheduler::ScheduleResult> getScheduledFrameResult() const override;
 };
